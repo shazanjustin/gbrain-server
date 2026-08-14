@@ -10,8 +10,13 @@
 # only one that produces a working brain here. Do not "simplify" this back.
 FROM oven/bun:1
 
+# openssh-client is not optional: the brain repo is private and cloned over SSH
+# with a deploy key, so both `ssh` (for git transport) and `ssh-keyscan` (for
+# known_hosts) must exist. Without it the entrypoint dies at 127 under `set -eu`
+# with no error text -- it just stops after the first line of output.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates \
+ && apt-get install -y --no-install-recommends \
+      git ca-certificates openssh-client \
  && rm -rf /var/lib/apt/lists/*
 
 # Pin the upstream ref. `latest-stable` is upstream's moving pointer; override
