@@ -18,6 +18,49 @@ fi
 
 mkdir -p "$DATA_DIR"
 
+# --- stale PGLite locks ------------------------------------------------------
+# PGLite/GBrain records the serving process PID inside the persistent DB
+# directory. In containers that PID is usually 1. After a crash/redeploy, the
+# next entrypoint shell is also PID 1, so upstream sees "PID 1 is alive" and
+# refuses to clear the old lock even though no gbrain server has opened the DB
+# yet. Clear only locks that are clearly stale for this boot; leave locks held
+# by any other live process alone.
+clear_stale_pglite_locks() {
+  [ -d "$PGLITE_PATH" ] || return 0
+
+  lock_file="$PGLITE_PATH/.gbrain-lock/lock"
+  if [ -f "$lock_file" ]; then
+    lock_pid="$(sed -n 's/.*"pid":[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$lock_file" | head -n 1)"
+    if [ -n "$lock_pid" ] && [ "$lock_pid" != "$$" ] && kill -0 "$lock_pid" 2>/dev/null; then
+      echo "PGLite lock appears held by live PID $lock_pid; leaving it in place"
+    else
+      echo "clearing stale GBrain lock at $PGLITE_PATH/.gbrain-lock"
+      rm -rf "$PGLITE_PATH/.gbrain-lock"
+    fi
+  fi
+
+  postmaster_pid_file="$PGLITE_PATH/postmaster.pid"
+  if [ -f "$postmaster_pid_file" ]; then
+    postmaster_pid="$(head -n 1 "$postmaster_pid_file" 2>/dev/null || true)"
+    case "$postmaster_pid" in
+      ''|-*|*[!0-9]*)
+        echo "clearing stale PGLite postmaster.pid"
+        rm -f "$postmaster_pid_file"
+        ;;
+      *)
+        if [ "$postmaster_pid" = "$$" ] || ! kill -0 "$postmaster_pid" 2>/dev/null; then
+          echo "clearing stale PGLite postmaster.pid"
+          rm -f "$postmaster_pid_file"
+        else
+          echo "PGLite postmaster appears live at PID $postmaster_pid; leaving postmaster.pid"
+        fi
+        ;;
+    esac
+  fi
+}
+
+clear_stale_pglite_locks
+
 # --- git credentials ---------------------------------------------------------
 # The brain repo is private. A read-only deploy key scoped to that single repo
 # is the narrowest credential that works -- a PAT would carry access to every
