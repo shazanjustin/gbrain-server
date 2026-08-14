@@ -116,10 +116,12 @@ gbrain apply-migrations --yes || echo "warn: apply-migrations failed"
 gbrain config set search.mode "${GBRAIN_SEARCH_MODE:-balanced}" \
   || echo "warn: could not set search.mode"
 
-# Pull the markdown into the index. Safe on keyless brains: `embed --stale`
-# exits 0 with a note when embeddings are disabled.
+# Pull the markdown into the index. Keep sync independent from embeddings:
+# OPENAI_API_KEY can run out of credit, and a failed inline embed used to block
+# every page from importing at all. Keyword-only pages are still useful to EV;
+# `embed --stale` is a best-effort upgrade after the text has safely landed.
 if [ -d "$BRAIN_REPO_DIR" ]; then
-  gbrain sync --repo "$BRAIN_REPO_DIR" || echo "warn: initial sync failed"
+  gbrain sync --repo "$BRAIN_REPO_DIR" --no-embed --retry-failed || echo "warn: initial sync failed"
   gbrain embed --stale || echo "warn: initial embed failed"
 fi
 
