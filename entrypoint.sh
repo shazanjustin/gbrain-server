@@ -118,11 +118,16 @@ gbrain config set search.mode "${GBRAIN_SEARCH_MODE:-balanced}" \
 
 # Pull the markdown into the index. Keep sync independent from embeddings:
 # OPENAI_API_KEY can run out of credit, and a failed inline embed used to block
-# every page from importing at all. Keyword-only pages are still useful to EV;
-# `embed --stale` is a best-effort upgrade after the text has safely landed.
+# every page from importing at all. Keyword-only pages are still useful to EV.
+# Embedding is opt-in at boot because a quota-exhausted provider adds minutes
+# of downtime before the HTTP server starts.
 if [ -d "$BRAIN_REPO_DIR" ]; then
   gbrain sync --repo "$BRAIN_REPO_DIR" --no-embed --retry-failed || echo "warn: initial sync failed"
-  gbrain embed --stale || echo "warn: initial embed failed"
+  if [ "${GBRAIN_EMBED_ON_BOOT:-0}" = "1" ]; then
+    gbrain embed --stale || echo "warn: initial embed failed"
+  else
+    echo "embedding on boot disabled; set GBRAIN_EMBED_ON_BOOT=1 after embedding credits are available"
+  fi
 fi
 
 # --- overnight maintenance ---------------------------------------------------
